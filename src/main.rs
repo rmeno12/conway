@@ -14,21 +14,25 @@ const HEIGHT: u32 = 240;
 struct Conway {
     cells: Vec<bool>,
     scratch_cells: Vec<bool>,
+    width: usize,
+    height: usize,
 }
 
 impl Conway {
-    fn new() -> Self {
-        let mut empty_cells = Vec::with_capacity((WIDTH * HEIGHT).try_into().unwrap());
+    fn new(width: usize, height: usize) -> Self {
+        let mut empty_cells = Vec::with_capacity(width * height);
         empty_cells.resize(empty_cells.capacity(), false);
         Self {
             cells: empty_cells.clone(),
             scratch_cells: empty_cells,
+            width,
+            height,
         }
     }
 
-    fn new_random() -> Self {
+    fn new_random(width: usize, height: usize) -> Self {
         let mut rng = rand::rng();
-        let mut con = Self::new();
+        let mut con = Self::new(width, height);
         for c in con.cells.iter_mut() {
             *c = rng.random_bool(0.3);
         }
@@ -37,10 +41,10 @@ impl Conway {
 
     fn update(&mut self) {
         debug_assert_eq!(self.cells.len(), self.scratch_cells.len());
-        for y in 0..HEIGHT {
-            for x in 0..WIDTH {
-                let n = self.neighbors(x.try_into().unwrap(), y.try_into().unwrap());
-                let idx: usize = (x + WIDTH * y).try_into().unwrap();
+        for y in 0..self.height {
+            for x in 0..self.width {
+                let n = self.neighbors(x as i32, y as i32);
+                let idx: usize = x + self.width * y;
                 self.scratch_cells[idx] = Self::next_cell_state(self.cells[idx], n);
             }
         }
@@ -59,18 +63,17 @@ impl Conway {
     }
 
     fn neighbors(&self, x: i32, y: i32) -> u32 {
+        debug_assert!(x >= 0 && y >= 0);
         let mut n = 0;
         for dx in -1..=1 {
             for dy in -1..=1 {
                 let (nx, ny) = (x + dx, y + dy);
+                let idx = (nx + ny * self.width as i32) as usize;
                 if 0 <= nx
-                    && nx < WIDTH.try_into().unwrap()
+                    && nx < self.width as i32
                     && 0 <= ny
-                    && ny < HEIGHT.try_into().unwrap()
-                    && self.cells[TryInto::<usize>::try_into(
-                        nx + ny * TryInto::<i32>::try_into(WIDTH).unwrap(),
-                    )
-                    .unwrap()]
+                    && ny < self.height as i32
+                    && self.cells[idx]
                 {
                     n += 1;
                 }
@@ -81,7 +84,7 @@ impl Conway {
 
     fn next_cell_state(alive: bool, neighbors: u32) -> bool {
         if alive {
-            2 <= neighbors && neighbors <= 3
+            (2..=3).contains(&neighbors)
         } else {
             neighbors == 3
         }
@@ -92,14 +95,18 @@ struct App {
     window: Option<Arc<Window>>,
     pixels: Option<Pixels<'static>>,
     conway: Conway,
+    width: usize,
+    height: usize,
 }
 
 impl App {
-    fn new() -> Self {
+    fn new(width: usize, height: usize) -> Self {
         App {
             window: None,
             pixels: None,
-            conway: Conway::new_random(),
+            conway: Conway::new_random(width, height),
+            width,
+            height,
         }
     }
 }
@@ -107,7 +114,7 @@ impl App {
 impl ApplicationHandler for App {
     fn resumed(&mut self, event_loop: &winit::event_loop::ActiveEventLoop) {
         let window = {
-            let size = LogicalSize::new(2.0 * WIDTH as f64, 2.0 * HEIGHT as f64);
+            let size = LogicalSize::new(self.width as f64 * 3.0, self.height as f64 * 3.0);
             Arc::new(
                 event_loop
                     .create_window(
@@ -125,7 +132,7 @@ impl ApplicationHandler for App {
             let window_size = window.inner_size();
             let surface_texture =
                 SurfaceTexture::new(window_size.width, window_size.height, window.clone());
-            match Pixels::new(WIDTH, HEIGHT, surface_texture) {
+            match Pixels::new(self.width as u32, self.height as u32, surface_texture) {
                 Ok(pixels) => {
                     window.request_redraw();
                     Some(pixels)
@@ -167,7 +174,7 @@ impl ApplicationHandler for App {
 fn main() -> Result<()> {
     let event_loop = EventLoop::new().unwrap();
 
-    let mut conway = App::new();
+    let mut conway = App::new(WIDTH as usize, HEIGHT as usize);
     event_loop.run_app(&mut conway)?;
 
     Ok(())
